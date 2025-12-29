@@ -1,4 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getFirestore,
   collection,
@@ -9,7 +10,8 @@ import {
   limit,
   onSnapshot,
   doc,
-  setDoc
+  setDoc,
+  deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 /**
@@ -33,6 +35,17 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
+
+// Auth anónima: no pide login, pero da un UID para poder borrar solo tus mensajes
+let uid = null;
+try {
+  await signInAnonymously(auth);
+  uid = auth.currentUser?.uid || null;
+} catch (e) {
+  console.error(e);
+  alert("No se pudo iniciar sesión anónima. Sin esto no se puede borrar solo tus mensajes.");
+}
 
 const $messages = document.getElementById("messages");
 const $form = document.getElementById("sendForm");
@@ -117,7 +130,7 @@ window.addEventListener("beforeunload", () => {
 let pendingMedia = null; // { url, kind, contentType, publicId, bytes }
 
 // --- TYPING (Firestore) ---
-const typingRef = doc(db, "typing", clientId);
+const typingRef = doc(db, "typing", (uid || clientId));
 let typingTimer = null;
 let isTypingLocal = false;
 
@@ -336,6 +349,7 @@ async function stopRecordingAndSend() {
     const out = await uploadToCloudinary(fileLike);
 
     const payload = {
+      uid: uid || "",
       name: userName,
       text: "",
       createdAt: serverTimestamp(),
@@ -397,6 +411,7 @@ $recordBtn.addEventListener("pointerleave", (ev) => {
 // --- RENDER ---
 function renderMessage(doc) {
   const data = doc.data();
+  const msgUid = String(data.uid ?? "");
   const name = escapeHtml(data.name ?? "Invitado");
   const when = formatDate(data.createdAt);
 
@@ -426,7 +441,10 @@ function renderMessage(doc) {
 
   el.innerHTML = `
     <div class="meta">
-      <span><strong>${name}</strong></span>
+      <span class="metaLeft">
+        <strong>${name}</strong>
+        ${msgUid && uid && msgUid === uid ? `<button class="delBtn" data-del="${escapeHtml(doc.id)}" type="button">Borrar</button>` : ``}
+      </span>
       <span>${escapeHtml(when)}</span>
     </div>
     ${hasText ? `<div class="text">${text}</div>` : ""}
@@ -494,6 +512,7 @@ $form.addEventListener("submit", async (e) => {
   $input.focus();
 
   const payload = {
+    uid: uid || "",
     name: userName,
     text: clean,
     createdAt: serverTimestamp(),

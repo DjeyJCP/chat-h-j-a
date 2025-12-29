@@ -73,3 +73,7 @@ Si no añades este bloque, el chat seguirá funcionando pero no aparecerá el in
 ## Audio (nota de voz)
 - Botón 🎙: mantén pulsado para grabar, suelta para enviar.
 - Se sube a Cloudinary igual que fotos/vídeos y se guarda en Firestore como media.
+
+
+## Borrar solo tus mensajes (sin login visible)
+Se usa Auth anónima de Firebase para obtener un UID y permitir borrar solo tus mensajes.

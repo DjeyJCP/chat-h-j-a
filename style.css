@@ -196,3 +196,22 @@ body {
 #recordBtn{font-size:18px;}
 
 .media audio{ width: 100%; }
+
+.delBtn{
+  border: 1px solid #2a3350;
+  background: #151b2e;
+  color: #e7eaf0;
+  padding: 4px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.delBtn:disabled{
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.metaLeft{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
