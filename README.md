@@ -50,3 +50,21 @@ Este chat es público: cualquiera con el enlace puede subir archivos (a tu cuent
 ## Config ya puesta
 - CLOUDINARY_CLOUD_NAME = dsavymd9i
 - CLOUDINARY_UPLOAD_PRESET = chat-h-j-a
+
+
+## Firestore Rules (añadir typing indicator)
+Además de `messages`, este chat usa una colección `typing` para mostrar “X está escribiendo…”.
+Añade estas rules (o integra el bloque `typing` en tus rules actuales):
+
+```
+match /typing/{id} {
+  allow read: if true;
+  allow create, update: if
+    request.resource.data.keys().hasOnly(['name','isTyping','updatedAt']) &&
+    request.resource.data.name is string &&
+    request.resource.data.isTyping is bool;
+  allow delete: if true;
+}
+```
+
+Si no añades este bloque, el chat seguirá funcionando pero no aparecerá el indicador.

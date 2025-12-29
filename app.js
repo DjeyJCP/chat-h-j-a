@@ -7,7 +7,9 @@ import {
   query,
   orderBy,
   limit,
-  onSnapshot
+  onSnapshot,
+  doc,
+  setDoc
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 /**
@@ -44,6 +46,7 @@ const $mediaChip = document.getElementById("mediaChip");
 const $mediaChipText = document.getElementById("mediaChipText");
 const $removeMediaBtn = document.getElementById("removeMediaBtn");
 const $sendBtn = document.getElementById("sendBtn");
+const $typingIndicator = document.getElementById("typingIndicator");
 
 function escapeHtml(str) {
   return String(str)
@@ -80,12 +83,64 @@ function getOrAskName(force = false) {
 
 let userName = getOrAskName(false);
 
+// Identificador local del navegador (para presencia/typing)
+function getClientId() {
+  let id = localStorage.getItem("chat_client_id");
+  if (!id) {
+    const bytes = new Uint8Array(12);
+    crypto.getRandomValues(bytes);
+    id = Array.from(bytes).map(b => (b % 36).toString(36)).join("");
+    localStorage.setItem("chat_client_id", id);
+  }
+  return id;
+}
+const clientId = getClientId();
+
 $changeNameBtn.addEventListener("click", () => {
   userName = getOrAskName(true);
 });
 
+// Typing: al escribir en el input
+$input.addEventListener("input", onUserInputActivity);
+$input.addEventListener("focus", onUserInputActivity);
+$input.addEventListener("blur", () => updateTyping(false));
+window.addEventListener("beforeunload", () => {
+  // intenta marcar como no escribiendo
+  updateTyping(false);
+});
+
 // --- MEDIA (Cloudinary) ---
 let pendingMedia = null; // { url, kind, contentType, publicId, bytes }
+
+// --- TYPING (Firestore) ---
+const typingRef = doc(db, "typing", clientId);
+let typingTimer = null;
+let isTypingLocal = false;
+
+async function updateTyping(typing) {
+  // Best-effort: no bloquea el chat si falla
+  try {
+    isTypingLocal = typing;
+    await setDoc(typingRef, {
+      name: userName,
+      isTyping: !!typing,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (e) {
+    // Silencioso
+    console.warn("typing update failed", e);
+  }
+}
+
+function scheduleStopTyping() {
+  if (typingTimer) clearTimeout(typingTimer);
+  typingTimer = setTimeout(() => updateTyping(false), 2000);
+}
+
+function onUserInputActivity() {
+  if (!isTypingLocal) updateTyping(true);
+  scheduleStopTyping();
+}
 
 function setMediaChipVisible(visible) {
   $mediaChip.style.display = visible ? "" : "none";
@@ -218,6 +273,39 @@ function renderMessage(doc) {
 function scrollToBottom() {
   $messages.scrollTop = $messages.scrollHeight;
 }
+
+
+function renderTypingIndicator(names) {
+  const uniq = Array.from(new Set(names)).filter(n => n && n !== userName);
+  if (uniq.length === 0) {
+    $typingIndicator.style.display = "none";
+    $typingIndicator.textContent = "";
+    return;
+  }
+  if (uniq.length === 1) {
+    $typingIndicator.innerHTML = `<em>${escapeHtml(uniq[0])}</em> está escribiendo…`;
+  } else if (uniq.length === 2) {
+    $typingIndicator.innerHTML = `<em>${escapeHtml(uniq[0])}</em> y <em>${escapeHtml(uniq[1])}</em> están escribiendo…`;
+  } else {
+    $typingIndicator.textContent = `${uniq.length} personas están escribiendo…`;
+  }
+  $typingIndicator.style.display = "";
+}
+
+// Escucha presencia de typing (últimos cambios)
+const typingCol = collection(db, "typing");
+const typingQ = query(typingCol, orderBy("updatedAt", "desc"), limit(25));
+onSnapshot(typingQ, (snapshot) => {
+  const now = Date.now();
+  const active = [];
+  snapshot.forEach((d) => {
+    const v = d.data() || {};
+    const ts = v.updatedAt?.toDate ? v.updatedAt.toDate().getTime() : 0;
+    const fresh = ts && (now - ts) < 10000; // 10s
+    if (v.isTyping === true && fresh) active.push(String(v.name || "Invitado"));
+  });
+  renderTypingIndicator(active);
+});
 
 // Realtime listener: últimos 500 mensajes
 const msgsRef = collection(db, "messages");
