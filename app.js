@@ -74,6 +74,27 @@ function handleDeleteClick(e) {
 // Delegación: los mensajes se renderizan dinámicamente
 $messages.addEventListener("click", handleDeleteClick);
 
+function attachMediaAutoScroll() {
+  // Si estás abajo (o justo tras cargar), cuando una media termina de cargar, ajusta al final.
+  $messages.addEventListener("load", (ev) => {
+    const t = ev.target;
+    if (!t) return;
+    const now = Date.now();
+    const shouldForce = now < forceBottomUntil;
+    if (!shouldForce && !atBottomNow()) return;
+    if (t.tagName === "IMG") scrollToBottom();
+  }, true);
+
+  $messages.addEventListener("loadedmetadata", () => {
+    const now = Date.now();
+    const shouldForce = now < forceBottomUntil;
+    if (!shouldForce && !atBottomNow()) return;
+    scrollToBottom();
+  }, true);
+}
+attachMediaAutoScroll();
+
+
 const $form = document.getElementById("sendForm");
 const $input = document.getElementById("messageInput");
 const $currentUser = document.getElementById("currentUser");
@@ -492,6 +513,19 @@ function scrollToBottom() {
   $messages.scrollTop = $messages.scrollHeight;
 }
 
+function kickScrollToBottom(times = 3) {
+  // Reintenta varias veces (por cargas tardías de imágenes/video/audio)
+  let i = 0;
+  const step = () => {
+    scrollToBottom();
+    i++;
+    if (i < times) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+  // y un último por si la media tarda un poco más
+  setTimeout(() => scrollToBottom(), 250);
+}
+
 
 function renderTypingIndicator(names) {
   const uniq = Array.from(new Set(names)).filter(n => n && n !== userName);
@@ -532,6 +566,7 @@ const q = query(msgsRef, orderBy("createdAt", "asc"), limit(500));
 // Render estable: NO reconstruye todo, aplica cambios incrementales para evitar saltos.
 const msgEls = new Map(); // id -> element
 let firstSnapshotDone = false;
+let forceBottomUntil = 0; // timestamp (ms) mientras forzamos bajar tras carga
 
 function insertAt(container, el, index) {
   const children = container.children;
@@ -581,7 +616,9 @@ onSnapshot(q, (snapshot) => {
   // Al cargar por primera vez, ve al último mensaje.
   if (!firstSnapshotDone) {
     firstSnapshotDone = true;
-    scrollToBottom();
+    // Forzamos ir al final durante unos segundos por si la media carga tarde
+    forceBottomUntil = Date.now() + 3000;
+    kickScrollToBottom(4);
     return;
   }
 
