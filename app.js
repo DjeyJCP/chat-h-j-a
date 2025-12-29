@@ -480,7 +480,9 @@ function renderMessage(doc) {
 }
 
 function scrollToBottom() {
-  $messages.scrollTop = $messages.scrollHeight;
+  requestAnimationFrame(() => {
+    $messages.scrollTop = $messages.scrollHeight;
+  });
 }
 
 
@@ -521,11 +523,24 @@ const msgsRef = collection(db, "messages");
 const q = query(msgsRef, orderBy("createdAt", "asc"), limit(500));
 
 onSnapshot(q, (snapshot) => {
+  // Evita “saltos” de scroll: solo autoscroll si estabas abajo.
+  const prevScrollTop = $messages.scrollTop;
+  const prevScrollHeight = $messages.scrollHeight;
+  const atBottom = (prevScrollTop + $messages.clientHeight) >= (prevScrollHeight - 40);
+
   $messages.innerHTML = "";
   snapshot.forEach((doc) => {
     $messages.appendChild(renderMessage(doc));
   });
-  scrollToBottom();
+
+  // Si estabas abajo, baja. Si no, conserva la posición relativa.
+  if (atBottom) {
+    scrollToBottom();
+  } else {
+    const newScrollHeight = $messages.scrollHeight;
+    const delta = newScrollHeight - prevScrollHeight;
+    $messages.scrollTop = prevScrollTop + delta;
+  }
 });
 
 $form.addEventListener("submit", async (e) => {
