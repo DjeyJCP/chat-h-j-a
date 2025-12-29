@@ -45,6 +45,10 @@ const $mediaInput = document.getElementById("mediaInput");
 const $mediaChip = document.getElementById("mediaChip");
 const $mediaChipText = document.getElementById("mediaChipText");
 const $removeMediaBtn = document.getElementById("removeMediaBtn");
+const $recordBtn = document.getElementById("recordBtn");
+const $recordChip = document.getElementById("recordChip");
+const $recordChipText = document.getElementById("recordChipText");
+const $cancelRecordBtn = document.getElementById("cancelRecordBtn");
 const $sendBtn = document.getElementById("sendBtn");
 const $typingIndicator = document.getElementById("typingIndicator");
 
@@ -155,6 +159,7 @@ function setBusyUploading(isBusy, label = "") {
 function guessKind(contentType) {
   if (contentType?.startsWith("image/")) return "image";
   if (contentType?.startsWith("video/")) return "video";
+  if (contentType?.startsWith("audio/")) return "audio";
   return "file";
 }
 
@@ -182,8 +187,8 @@ $removeMediaBtn.addEventListener("click", () => {
 async function uploadToCloudinary(file) {
   const ct = file.type || "";
   const kind = guessKind(ct);
-  if (kind !== "image" && kind !== "video") {
-    throw new Error("Solo se permiten fotos o vídeos.");
+  if (kind !== "image" && kind !== "video" && kind !== "audio") {
+    throw new Error("Solo se permiten fotos, vídeos o audios.");
   }
 
   const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(CLOUDINARY_CLOUD_NAME)}/auto/upload`;
@@ -223,13 +228,171 @@ $mediaInput.addEventListener("change", async () => {
     $mediaChipText.textContent = `Adjunto: ${file.name}`;
   } catch (e) {
     console.error(e);
-    alert("No se pudo subir. Revisa tu preset UNSIGNED de Cloudinary y que permita image/video.");
+    alert("No se pudo subir. Revisa tu preset UNSIGNED de Cloudinary y que permita subir archivos (auto) y formatos de imagen/vídeo/audio.");
     pendingMedia = null;
     setMediaChipVisible(false);
   } finally {
     setBusyUploading(false);
   }
 });
+// --- AUDIO (mantener pulsado para grabar) ---
+let recorder = null;
+let recStream = null;
+let recChunks = [];
+let recStartTs = 0;
+let recTicker = null;
+let recCanceled = false;
+
+function setRecordChipVisible(visible) {
+  $recordChip.style.display = visible ? "" : "none";
+}
+
+function stopRecordTicker() {
+  if (recTicker) clearInterval(recTicker);
+  recTicker = null;
+}
+
+function updateRecordChipTime() {
+  const ms = Date.now() - recStartTs;
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  $recordChipText.textContent = `Grabando… ${mm}:${ss} (suelta para enviar)`;
+}
+
+async function startRecording() {
+  if (!ensureCloudinaryConfigured()) {
+    alert("Falta configurar Cloudinary: pon CLOUD_NAME y UPLOAD_PRESET en app.js");
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert("Tu navegador no soporta grabación de audio.");
+    return;
+  }
+  if (recorder && recorder.state === "recording") return;
+
+  recCanceled = false;
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    alert("No has dado permiso de micrófono.");
+    return;
+  }
+
+  recChunks = [];
+  recStartTs = Date.now();
+  setRecordChipVisible(true);
+  updateRecordChipTime();
+  stopRecordTicker();
+  recTicker = setInterval(updateRecordChipTime, 250);
+
+  // Selección de mimeType compatible
+  let mimeType = "";
+  if (window.MediaRecorder?.isTypeSupported?.("audio/webm;codecs=opus")) mimeType = "audio/webm;codecs=opus";
+  else if (window.MediaRecorder?.isTypeSupported?.("audio/webm")) mimeType = "audio/webm";
+  else if (window.MediaRecorder?.isTypeSupported?.("audio/ogg;codecs=opus")) mimeType = "audio/ogg;codecs=opus";
+
+  recorder = new MediaRecorder(recStream, mimeType ? { mimeType } : undefined);
+  recorder.addEventListener("dataavailable", (ev) => {
+    if (ev.data && ev.data.size > 0) recChunks.push(ev.data);
+  });
+
+  recorder.start(250);
+  onUserInputActivity(); // marca typing por si acaso
+}
+
+async function stopRecordingAndSend() {
+  if (!recorder || recorder.state !== "recording") return;
+
+  stopRecordTicker();
+  $recordChipText.textContent = recCanceled ? "Cancelado" : "Procesando audio…";
+
+  const stopPromise = new Promise((resolve) => {
+    recorder.addEventListener("stop", resolve, { once: true });
+  });
+  recorder.stop();
+  await stopPromise;
+
+  // Corta el stream
+  try { recStream?.getTracks()?.forEach(t => t.stop()); } catch {}
+  recStream = null;
+
+  if (recCanceled) {
+    setRecordChipVisible(false);
+    $recordChipText.textContent = "";
+    return;
+  }
+
+  const blob = new Blob(recChunks, { type: recorder.mimeType || "audio/webm" });
+  const contentType = blob.type || "audio/webm";
+  const kind = "audio";
+
+  // Subir a Cloudinary y enviar mensaje
+  try {
+    setBusyUploading(true, "Subiendo…");
+    $recordChipText.textContent = "Subiendo audio…";
+
+    const fileLike = new File([blob], `audio_${Date.now()}.webm`, { type: contentType });
+    const out = await uploadToCloudinary(fileLike);
+
+    const payload = {
+      name: userName,
+      text: "",
+      createdAt: serverTimestamp(),
+      mediaUrl: out.url,
+      mediaKind: kind,
+      mediaContentType: contentType,
+      mediaPublicId: out.publicId || "",
+      mediaBytes: Number(out.bytes || blob.size || 0),
+    };
+
+    await addDoc(msgsRef, payload);
+  } catch (e) {
+    console.error(e);
+    alert("No se pudo enviar el audio. Revisa Cloudinary preset y Firestore Rules.");
+  } finally {
+    setBusyUploading(false);
+    setRecordChipVisible(false);
+    $recordChipText.textContent = "";
+  }
+}
+
+function cancelRecording() {
+  recCanceled = true;
+  if (recorder && recorder.state === "recording") {
+    stopRecordingAndSend();
+  } else {
+    setRecordChipVisible(false);
+    $recordChipText.textContent = "";
+  }
+}
+
+$cancelRecordBtn.addEventListener("click", cancelRecording);
+
+// Mantener pulsado (mouse/touch) para grabar
+let holding = false;
+
+function onHoldStart(ev) {
+  ev.preventDefault();
+  holding = true;
+  startRecording();
+}
+function onHoldEnd(ev) {
+  ev.preventDefault();
+  if (!holding) return;
+  holding = false;
+  updateTyping(false);
+  stopRecordingAndSend();
+}
+
+$recordBtn.addEventListener("pointerdown", onHoldStart);
+$recordBtn.addEventListener("pointerup", onHoldEnd);
+$recordBtn.addEventListener("pointercancel", onHoldEnd);
+$recordBtn.addEventListener("pointerleave", (ev) => {
+  // si suelta fuera, igualmente se envía al soltar; aquí solo evitamos quedarnos colgados
+});
+
+
 
 // --- RENDER ---
 function renderMessage(doc) {
@@ -254,6 +417,8 @@ function renderMessage(doc) {
       mediaHtml = `<div class="media"><img src="${escapeHtml(mediaUrl)}" alt="imagen"/></div>`;
     } else if (mediaKind === "video" || mediaType.startsWith("video/")) {
       mediaHtml = `<div class="media"><video src="${escapeHtml(mediaUrl)}" controls playsinline></video></div>`;
+    } else if (mediaKind === "audio" || mediaType.startsWith("audio/")) {
+      mediaHtml = `<div class="media"><audio src="${escapeHtml(mediaUrl)}" controls></audio></div>`;
     } else {
       mediaHtml = `<div class="media"><a href="${escapeHtml(mediaUrl)}" target="_blank" rel="noreferrer">Abrir archivo</a></div>`;
     }

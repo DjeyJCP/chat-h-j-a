@@ -68,3 +68,8 @@ match /typing/{id} {
 ```
 
 Si no añades este bloque, el chat seguirá funcionando pero no aparecerá el indicador.
+
+
+## Audio (nota de voz)
+- Botón 🎙: mantén pulsado para grabar, suelta para enviar.
+- Se sube a Cloudinary igual que fotos/vídeos y se guarda en Firestore como media.

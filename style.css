@@ -192,3 +192,7 @@ body {
 .typingIndicator em{
   font-style: italic;
 }
+
+#recordBtn{font-size:18px;}
+
+.media audio{ width: 100%; }

@@ -25,6 +25,11 @@
         <button id="addMediaBtn" class="iconBtn" type="button" title="Añadir foto o vídeo">+</button>
 
         <div class="composerCenter">
+          <div id="recordChip" class="mediaChip" style="display:none;">
+            <span id="recordChipText"></span>
+            <button id="cancelRecordBtn" type="button" class="chipBtn" title="Cancelar">×</button>
+          </div>
+
           <div id="mediaChip" class="mediaChip" style="display:none;">
             <span id="mediaChipText"></span>
             <button id="removeMediaBtn" type="button" class="chipBtn" title="Quitar">×</button>
@@ -37,6 +42,7 @@
           />
         </div>
 
+        <button id="recordBtn" class="iconBtn" type="button" title="Mantén pulsado para grabar audio">🎙</button>
         <button id="sendBtn" type="submit">Enviar</button>
 
         <input id="mediaInput" type="file" accept="image/*,video/*" style="display:none;" />
