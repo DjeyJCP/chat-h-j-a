@@ -480,9 +480,7 @@ function renderMessage(doc) {
 }
 
 function scrollToBottom() {
-  requestAnimationFrame(() => {
-    $messages.scrollTop = $messages.scrollHeight;
-  });
+  $messages.scrollTop = $messages.scrollHeight;
 }
 
 
@@ -522,16 +520,57 @@ onSnapshot(typingQ, (snapshot) => {
 const msgsRef = collection(db, "messages");
 const q = query(msgsRef, orderBy("createdAt", "asc"), limit(500));
 
-onSnapshot(q, (snapshot) => {
-  // Evita “saltos” de scroll: solo autoscroll si estabas abajo.
-  const prevScrollTop = $messages.scrollTop;
-  const prevScrollHeight = $messages.scrollHeight;
-  const atBottom = (prevScrollTop + $messages.clientHeight) >= (prevScrollHeight - 40);
+// Render estable: NO reconstruye todo, aplica cambios incrementales para evitar saltos.
+const msgEls = new Map(); // id -> element
 
-  $messages.innerHTML = "";
-  snapshot.forEach((doc) => {
-    $messages.appendChild(renderMessage(doc));
+function insertAt(container, el, index) {
+  const children = container.children;
+  if (index >= children.length) container.appendChild(el);
+  else container.insertBefore(el, children[index]);
+}
+
+function atBottomNow() {
+  return ($messages.scrollTop + $messages.clientHeight) >= ($messages.scrollHeight - 10);
+}
+
+onSnapshot(q, (snapshot) => {
+  const wasAtBottom = atBottomNow();
+
+  snapshot.docChanges().forEach((change) => {
+    const id = change.doc.id;
+
+    if (change.type === "added") {
+      const el = renderMessage(change.doc);
+      msgEls.set(id, el);
+      insertAt($messages, el, change.newIndex);
+      return;
+    }
+
+    if (change.type === "modified") {
+      const oldEl = msgEls.get(id);
+      const newEl = renderMessage(change.doc);
+      msgEls.set(id, newEl);
+
+      if (oldEl && oldEl.parentNode) {
+        // Mantén posición visual (reemplaza nodo)
+        oldEl.replaceWith(newEl);
+      } else {
+        insertAt($messages, newEl, change.newIndex);
+      }
+      return;
+    }
+
+    if (change.type === "removed") {
+      const oldEl = msgEls.get(id);
+      if (oldEl && oldEl.parentNode) oldEl.remove();
+      msgEls.delete(id);
+      return;
+    }
   });
+
+  // Si estabas abajo, te quedas abajo. Si no, no tocamos scrollTop.
+  if (wasAtBottom) scrollToBottom();
+});
 
   // Si estabas abajo, baja. Si no, conserva la posición relativa.
   if (atBottom) {

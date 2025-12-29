@@ -217,3 +217,5 @@ body {
   align-items:center;
   gap:8px;
 }
+
+.messages{ overflow-anchor: auto; }
