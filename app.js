@@ -572,17 +572,7 @@ onSnapshot(q, (snapshot) => {
   if (wasAtBottom) scrollToBottom();
 });
 
-  // Si estabas abajo, baja. Si no, conserva la posición relativa.
-  if (atBottom) {
-    scrollToBottom();
-  } else {
-    const newScrollHeight = $messages.scrollHeight;
-    const delta = newScrollHeight - prevScrollHeight;
-    $messages.scrollTop = prevScrollTop + delta;
-  }
-});
-
-$form.addEventListener("submit", async (e) => {
+  $form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const clean = ($input.value ?? "").toString().trim();
