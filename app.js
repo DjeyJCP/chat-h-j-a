@@ -144,8 +144,17 @@ $changeNameBtn.addEventListener("click", () => {
 });
 
 // Typing: al escribir en el input
+
+function maybeScrollToBottomOnCompose() {
+  // Si estás escribiendo, queremos que el último mensaje y la barra estén visibles.
+  const farFromBottom = ($messages.scrollTop + $messages.clientHeight) < ($messages.scrollHeight - 80);
+  if (farFromBottom) scrollToBottom();
+}
+
 $input.addEventListener("input", onUserInputActivity);
+$input.addEventListener("input", maybeScrollToBottomOnCompose);
 $input.addEventListener("focus", onUserInputActivity);
+$input.addEventListener("focus", maybeScrollToBottomOnCompose);
 $input.addEventListener("blur", () => updateTyping(false));
 window.addEventListener("beforeunload", () => {
   // intenta marcar como no escribiendo
@@ -522,6 +531,7 @@ const q = query(msgsRef, orderBy("createdAt", "asc"), limit(500));
 
 // Render estable: NO reconstruye todo, aplica cambios incrementales para evitar saltos.
 const msgEls = new Map(); // id -> element
+let firstSnapshotDone = false;
 
 function insertAt(container, el, index) {
   const children = container.children;
@@ -567,6 +577,13 @@ onSnapshot(q, (snapshot) => {
       return;
     }
   });
+
+  // Al cargar por primera vez, ve al último mensaje.
+  if (!firstSnapshotDone) {
+    firstSnapshotDone = true;
+    scrollToBottom();
+    return;
+  }
 
   // Si estabas abajo, te quedas abajo. Si no, no tocamos scrollTop.
   if (wasAtBottom) scrollToBottom();
