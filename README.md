@@ -77,3 +77,8 @@ Si no añades este bloque, el chat seguirá funcionando pero no aparecerá el in
 
 ## Borrar solo tus mensajes (sin login visible)
 Se usa Auth anónima de Firebase para obtener un UID y permitir borrar solo tus mensajes.
+
+
+## Importante para borrar mensajes
+Activa: Firebase Console → Authentication → Método de acceso → **Anónimo**.
+Sin eso, no se puede borrar solo tus mensajes.

@@ -48,6 +48,32 @@ try {
 }
 
 const $messages = document.getElementById("messages");
+
+function handleDeleteClick(e) {
+  const btn = e.target?.closest?.("[data-del]");
+  if (!btn) return;
+
+  const id = btn.getAttribute("data-del");
+  if (!id) return;
+
+  if (!uid) {
+    alert("No hay UID (auth anónima falló). Activa Authentication → Anónimo en Firebase.");
+    return;
+  }
+
+  if (!confirm("¿Borrar este mensaje?")) return;
+
+  btn.disabled = true;
+  deleteDoc(doc(db, "messages", id)).catch((err) => {
+    console.error(err);
+    alert("No se pudo borrar. Revisa Firestore Rules (delete solo si uid coincide).");
+    btn.disabled = false;
+  });
+}
+
+// Delegación: los mensajes se renderizan dinámicamente
+$messages.addEventListener("click", handleDeleteClick);
+
 const $form = document.getElementById("sendForm");
 const $input = document.getElementById("messageInput");
 const $currentUser = document.getElementById("currentUser");
